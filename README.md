@@ -1,5 +1,5 @@
 
-# Instructions on setting up the project
+# Instructions for setting up the project
 
 Set-up the Docker container for the Eclipse Mosquitto:
 
