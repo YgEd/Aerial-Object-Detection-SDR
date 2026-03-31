@@ -105,7 +105,33 @@ class cvBlock():
         print(self._q.get())
 
 
+# TODO: HAVE TO PUT PACKET CONSTRUCTION LOGIC IN HERE TO TAKE UNPACK BYTES AND HAVE PREAMBLE AND ALL THAT
+
+
     def work(self, input_items, output_items):
+        # output_tiems stores list of np arrays for each output, because this block only has one output we just get the first output
+        out = output_items[0]
+        # GNU Radio pre-allocates out with a specific length before calling work
+        # This is the amount of samples the scheduler is asking your block to produce this call
+        n_requested = len(out)
+
+        # check message queue, if its empty return nothing
+        if len(self._q) == 0:
+            return 0
+        
+        # if there are messages in the queue, send out as many as possible
+        n = min(n_requested, len(self._q))
+
+        # get n amount of messages from queue and append to out
+        for _ in range(n):
+            try:
+                out.append(self._q.get_nowait())
+            except queue.Empty:
+                break
+        
+        # fill remainig with zeros as there may be garbage in there
+        if n < n_requested:
+            out[n:] = 0
 
 
 
