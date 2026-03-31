@@ -25,15 +25,13 @@ def get_client():
         return mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION1)
     return mqtt.Client()
 
-client = get_client()
-
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         print("✅ MQTT sender connected to broker")
     else:
         print(f"❌ MQTT connection failed: {rc}")
 
-client.on_connect = on_connect
+
 
 # ArUco setup
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
@@ -69,11 +67,14 @@ def signal_handler(sig, frame):
     running = False
 signal.signal(signal.SIGINT, signal_handler)
 
-def mqtt_loop():
-    client.connect(BROKER_HOST, BROKER_PORT, 60)
-    client.loop_start()
+# client = get_client()
+# client.on_connect = on_connect
 
-threading.Thread(target=mqtt_loop, daemon=True).start()
+# def mqtt_loop():
+#     client.connect(BROKER_HOST, BROKER_PORT, 60)
+#     client.loop_start()
+
+# threading.Thread(target=mqtt_loop, daemon=True).start()
 
 print("🎥 Sender started – press 'q' in window or Ctrl+C to stop")
 
@@ -148,7 +149,8 @@ while running:
         "camera_id": CAMERA_ID,
         "detections": detections
     }
-    client.publish(TOPIC, json.dumps(payload))
+
+    print(TOPIC, json.dumps(payload))
 
     cv2.imshow("Sender - Detections (press q to quit)", frame)
 
@@ -158,6 +160,6 @@ while running:
 # Cleanup
 cap.release()
 cv2.destroyAllWindows()
-client.loop_stop()
-client.disconnect()
+# client.loop_stop()
+# client.disconnect()
 print("✅ Sender shut down cleanly")
