@@ -86,13 +86,16 @@ class cvBlockRX(gr.sync_block):
                         self.constructed_bits = []
                         self.state = 'SEARCHING'
                     else:
-                        print(f'[cvBlockRX] Payload CRC Passed Message Received:',end="")
+                        print(f'[cvBlockRX] Payload CRC Passed! Message Received: ',end="")
                         self.bit_buffer = []
                         self.constructed_bits.append(raw_payload_bits)
 
                         # unwhiten message
                         msg = self._pc.whiten(raw_payload_bytes)
                         print(msg)
+                        self.bit_buffer = []
+                        self.constructed_bits = []
+                        self.state = 'SEARCHING'
 
 
         
