@@ -5,9 +5,11 @@ import numpy as np
 import time
 import queue
 import threading
+from packet_construct import PacketConstructor
+
 
 # class cvBlock(gr.sync_block):
-class cvBlock():
+class cvBlock(gr.sync_block):
     def __init__(self):
         gr.sync_block.__init__(
             self,
@@ -15,19 +17,25 @@ class cvBlock():
             in_sig=None,
             out_sig = [np.byte]
         )
-        self.cv_proc = None
 
+        # define variable for cv subprocess pointer
+        self.cv_proc = None
+        # declare packetcontructer object
+        self.pc = PacketConstructor()
         # message queue to store cv stdout in
         self._q = queue.Queue()
+        # packet queue to store cv constructed packets into
+        self._pack_q = queue.Queue()
         # Thread that reads the output from cv_proc and stores it in self._q
         self._reader_thread = None
         
     # define thread reading from subprocess
     # takes each line in byte format converts it to string and puts it in queue
-    def _add_to_q(self, stream, q):
+    def _add_to_q(self, stream, msg_q, packet_q):
         # read lines until the b'' condition is found
         for line in iter(stream.readline, b''):
-            q.put(line)
+            msg_q.put(line)
+            packet_q.put(self.pc.build_packet(line))
 
 
     def _waitForProcStart(self, timeout:float = 10.0):
@@ -62,7 +70,7 @@ class cvBlock():
             # start thread to read cv script output and push to queue
             self._reader_thread = threading.Thread(
             target=self._add_to_q,
-            args=(self.cv_proc.stdout, self._q),
+            args=(self.cv_proc.stdout, self._q, self._pack_q),
             daemon=True
             )
             self._reader_thread.start()
@@ -109,6 +117,10 @@ class cvBlock():
 
 
     def work(self, input_items, output_items):
+
+
+        # code for sending packet
+
         # output_tiems stores list of np arrays for each output, because this block only has one output we just get the first output
         out = output_items[0]
         # GNU Radio pre-allocates out with a specific length before calling work
@@ -116,22 +128,24 @@ class cvBlock():
         n_requested = len(out)
 
         # check message queue, if its empty return nothing
-        if len(self._q) == 0:
+        if self._pack_q.qsize() == 0:
             return 0
         
         # if there are messages in the queue, send out as many as possible
-        n = min(n_requested, len(self._q))
+        n = min(n_requested, self._pack_q.qsize())
 
         # get n amount of messages from queue and append to out
         for _ in range(n):
             try:
-                out.append(self._q.get_nowait())
+                # put packet in queue
+                out.append(self._pack_q.get_nowait())
             except queue.Empty:
                 break
         
         # fill remainig with zeros as there may be garbage in there
         if n < n_requested:
             out[n:] = 0
+
 
 
 

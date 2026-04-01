@@ -1,0 +1,115 @@
+import gnuradio as gr
+import numpy as np
+from packet_construct import PacketConstructor
+
+
+
+class cvBlockRX(gr.sync_block):
+    def __init__(self):
+        gr.sync_block.__init__(
+            self,
+            name='CV Receive Block',
+            in_sig=[np.byte],
+            out_sig = None
+        )
+
+        self.bit_buffer = []
+        self.state = "SEARCHING"
+        self._pc = PacketConstructor()
+        self.constructed_bits = []
+
+
+    
+    def work(self, input_items, output_items):
+
+        bits_in = input_items[0]
+        len_sync = len(self._pc.sync_word)
+        sync_word = self._pc.sync_word
+
+        for bit in bits_in:
+            self.bit_buffer.append(bit)
+
+
+            # [SEARCHING FOR SYNC WORD STATE]
+            if self.state == 'SEARCHING':
+                if len(self.bit_buffer) >= len_sync:
+                    tail = self.bit_buffer[-len_sync:]
+                    if np.array_equal(tail, sync_word):
+                        print('[cvBlockRX] sync word found!')
+                        # clear bit buffer so the next bits should be payloadlencrc
+                        self.bit_buffer = []
+                        self.state = 'READ_LENGTH'
+                        self.constructed_bits.append(sync_word)
+
+
+            # [READING PACKET LENGTH STATE]
+            elif self.state == 'READ_LENGTH':
+
+                # two bytes/16 bits represent the payload length + 8 bit crc
+                if len(self.bit_buffer) >= 24:
+
+                    raw_bits = self.bit_buffer[:16]
+                    len_bytes = self._pc.bits_to_bytes(raw_bits)
+                    # 8crc is just one byte so when we turn the bits to bytes there's only one elment in the byte array
+                    received_crc_byte = self._pc.bits_to_bytes(raw_bits[16:24])[0]
+                    expected_crc_byte = self._pc.crc8(list(len_bytes))
+
+                    if received_crc_byte != expected_crc_byte:
+                        print(f"[cvBlockRX] Length CRC FAILED: got {received_crc_byte:#x}, expected {expected_crc_byte:#x}")
+                        self.bit_buffer = []
+                        self.constructed_bits = []
+                        self.state = 'SEARCHING'
+                    
+                    else:
+                        # convert payload length from bytes to int
+                        payload_len = (len_bytes[0] << 8 | len_bytes[1])
+                        print(f"[cvBlockRX] Length CRC Passed! Payload length: {payload_len}")
+                        self.bit_buffer = []
+                        self.constructed_bits.append(raw_bits)
+                        self.state = 'READ_PAYLOAD'
+                
+            
+            elif self.state == 'READ_PAYLOAD':
+
+                # ensure there are enough bits in the bit buffer to include payload and payload crc
+                # multiply payload_len by 8 because payload_len is an int curently
+                if len(self.bit_buffer) >= (payload_len * 8) + 16:
+
+                    raw_payload_bits = self.bit_buffer[:(payload_len*8)]
+                    raw_payload_bytes = self._pc.bits_to_bytes(raw_payload_bits)
+                    received_payload_crc_bytes = self._pc.bits_to_bytes(self.bit_buffer[(payload_len*8):16])
+                    expected_payload_crc_byte = self._pc.crc16(list(raw_payload_bytes))
+
+                    if received_payload_crc_bytes != expected_payload_crc_byte:
+                        print(f'[cvBlockRX] Payload CRC FAILED: got {received_payload_crc_bytes:#x}, expected {expected_payload_crc_byte:#x}')
+                        self.bit_buffer = []
+                        self.constructed_bits = []
+                        self.state = 'SEARCHING'
+                    else:
+                        print(f'[cvBlockRX] Payload CRC Passed Message Received:',end="")
+                        self.bit_buffer = []
+                        self.constructed_bits.append(raw_payload_bits)
+
+                        # unwhiten message
+                        msg = self._pc.whiten(raw_payload_bytes)
+                        print(msg)
+
+
+        
+        return len(input_items)
+
+
+
+
+
+
+
+            
+
+
+
+
+
+    
+
+

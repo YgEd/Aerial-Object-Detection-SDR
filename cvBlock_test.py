@@ -58,6 +58,7 @@ class cvBlock():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             )
+            print(f"[cvBlock] Started sender.py subprocess")
 
             # start thread to read cv script output and push to queue
             self._reader_thread = threading.Thread(
