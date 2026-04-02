@@ -75,7 +75,6 @@ def mqtt_loop():
     client.connect(BROKER_HOST, BROKER_PORT, 60)
     client.loop_start()
 
-threading.Thread(target=mqtt_loop, daemon=True).start()
 
 print("📡 Receiver started – waiting for detections... (press q or Ctrl+C to quit)")
 
@@ -119,7 +118,5 @@ while running:
         break
 
 # Cleanup
-client.loop_stop()
-client.disconnect()
 cv2.destroyAllWindows()
 print("✅ Receiver shut down cleanly")

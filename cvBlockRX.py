@@ -1,7 +1,9 @@
 from gnuradio import gr
 import numpy as np
 from packet_construct import PacketConstructor
-
+import subprocess
+import sys
+import time
 
 
 class cvBlockRX(gr.sync_block):
@@ -17,8 +19,36 @@ class cvBlockRX(gr.sync_block):
         self.state = "SEARCHING"
         self._pc = PacketConstructor()
         self.constructed_bits = []
+        self.rx_proc = None
 
 
+    def start(self):
+
+        if self.rx_proc is None:
+            print(f"[cvBLockRX] Starting Receiver GUI")
+            self.rx_proc = subprocess.Popen(
+                [sys.executable, "receiver_sdr.py"],
+                stdin=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            # give it 5 seconds to boot
+            time.sleep(5)
+            
+    
+    def stop(self):
+        print(f"[cvBLockRX] Stopping Receiver GUI")
+        if self.rx_proc is not None:
+            self.rx_proc.terminate()
+        
+        try:
+            self.rx_proc.wait(timeout=10)
+        except:
+             # if didn't exit cleanly in time force kill
+            self.rx_proc.kill()
+            # always reap/wait after kill
+            self.rx_proc.wait()
+
+        print(f"[cvBLockRX] Stopped Receiver GUI")
     
     def work(self, input_items, output_items):
 
@@ -51,7 +81,7 @@ class cvBlockRX(gr.sync_block):
                     raw_bits = self.bit_buffer[:16]
                     len_bytes = self._pc.bits_to_bytes(raw_bits)
                     # 8crc is just one byte so when we turn the bits to bytes there's only one elment in the byte array
-                    received_crc_byte = self._pc.bits_to_bytes(raw_bits[16:24])[0]
+                    received_crc_byte = self._pc.bits_to_bytes(raw_bits[16:24])
                     expected_crc_byte = self._pc.crc8(list(len_bytes))
 
                     if received_crc_byte != expected_crc_byte:
@@ -92,7 +122,8 @@ class cvBlockRX(gr.sync_block):
 
                         # unwhiten message
                         msg = self._pc.whiten(raw_payload_bytes)
-                        print(msg)
+                        print(f'[cvBlockRX] received msg: {msg}')
+                        self.rx_proc.stdin(msg)
                         self.bit_buffer = []
                         self.constructed_bits = []
                         self.state = 'SEARCHING'
