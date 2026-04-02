@@ -51,19 +51,19 @@ class cvBlockRX(gr.sync_block):
                     raw_bits = self.bit_buffer[:16]
                     len_bytes = self._pc.bits_to_bytes(raw_bits)
                     # 8crc is just one byte so when we turn the bits to bytes there's only one elment in the byte array
-                    received_crc_byte = self._pc.bits_to_bytes(raw_bits[16:24])[0]
-                    expected_crc_byte = self._pc.crc8(list(len_bytes))
+                    received_crc_bits = self.bit_buffer[16:24]
+                    expected_crc_bits = self._pc.crc8(list(len_bytes))
 
-                    if received_crc_byte != expected_crc_byte:
-                        print(f"[cvBlockRX] Length CRC FAILED: got {received_crc_byte:#x}, expected {expected_crc_byte:#x}")
+                    if received_crc_bits != expected_crc_bits:
+                        print(f"[cvBlockRX] Length CRC FAILED")
                         self.bit_buffer = []
                         self.constructed_bits = []
                         self.state = 'SEARCHING'
                     
                     else:
                         # convert payload length from bytes to int
-                        payload_len = (len_bytes[0] << 8 | len_bytes[1])
-                        print(f"[cvBlockRX] Length CRC Passed! Payload length: {payload_len}")
+                        self.payload_len = (len_bytes[0] << 8 | len_bytes[1])
+                        print(f"[cvBlockRX] Length CRC Passed! Payload length: {self.payload_len}")
                         self.bit_buffer = []
                         self.constructed_bits.append(raw_bits)
                         self.state = 'READ_PAYLOAD'
@@ -73,15 +73,15 @@ class cvBlockRX(gr.sync_block):
 
                 # ensure there are enough bits in the bit buffer to include payload and payload crc
                 # multiply payload_len by 8 because payload_len is an int curently
-                if len(self.bit_buffer) >= (payload_len * 8) + 16:
+                if len(self.bit_buffer) >= (self.payload_len * 8) + 16:
 
-                    raw_payload_bits = self.bit_buffer[:(payload_len*8)]
+                    raw_payload_bits = self.bit_buffer[:(self.payload_len*8)]
                     raw_payload_bytes = self._pc.bits_to_bytes(raw_payload_bits)
-                    received_payload_crc_bytes = self._pc.bits_to_bytes(self.bit_buffer[(payload_len*8):16])
-                    expected_payload_crc_byte = self._pc.crc16(list(raw_payload_bytes))
+                    received_payload_crc_bits = self.bit_buffer[(self.payload_len*8):(self.payload_len*8) + 16]
+                    expected_payload_crc_bits = self._pc.crc16(list(raw_payload_bytes))
 
-                    if received_payload_crc_bytes != expected_payload_crc_byte:
-                        print(f'[cvBlockRX] Payload CRC FAILED: got {received_payload_crc_bytes:#x}, expected {expected_payload_crc_byte:#x}')
+                    if received_payload_crc_bits != expected_payload_crc_bits:
+                        print(f'[cvBlockRX] Payload CRC FAILED')
                         self.bit_buffer = []
                         self.constructed_bits = []
                         self.state = 'SEARCHING'
