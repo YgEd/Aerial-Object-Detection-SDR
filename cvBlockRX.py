@@ -1,4 +1,4 @@
-import gnuradio as gr
+from gnuradio import gr
 import numpy as np
 from packet_construct import PacketConstructor
 

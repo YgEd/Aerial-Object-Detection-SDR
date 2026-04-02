@@ -3,7 +3,6 @@ from gnuradio.filter import firdes
 from PyQt5 import Qt
 from cvBlockSource import cvBlock
 import threading
-from pymavlink.dialects.v20 import common as mavlink2
 import osmosdr
 import sys
 import sip
@@ -204,7 +203,7 @@ class flow_graph(gr.top_block,Qt.QWidget):
 
 
         self.source = cvBlock()
-        self.source.start()
+        # self.source.start()
 
         
         ##########################
@@ -219,49 +218,7 @@ class flow_graph(gr.top_block,Qt.QWidget):
         self.connect(self.tx_resampler, self.osmosdr_sink)
 
 
-        # Connect loopback — tap off after GFSK mod
-        # Just for debug perposes
-        # self.connect(self.gfsk_mod, self.gfsk_demod)
-        # self.connect(self.gfsk_demod, self.debug_sink)
-
-    # def cli_thread(packet_source):
-    #     mav = mavlink2.MAVLink(None)
-    #     mav.srcSystem = 255
-    #     mav.srcComponent = 1
-        
-    #     transmitting = True
-        
-    #     def input_listener():
-    #         nonlocal transmitting
-    #         while True:
-    #             try:
-    #                 cmd = input("Enter command (start/stop/arm/guided/quit): ")
-    #             except (KeyboardInterrupt, EOFError):
-    #                 print("\nProgram Killed")
-    #                 Qt.QApplication.quit()
-    #                 return
-                
-    #             if cmd == 'stop':
-    #                 transmitting = False
-    #                 print("[CLI] Transmission stopped")
-    #             elif cmd == 'start':
-    #                 transmitting = True
-    #                 print("[CLI] Transmission started")
-    #             elif cmd == 'arm':
-    #                 msg = mav.command_long_encode(1, 1, 400, 0, 1, 0, 0, 0, 0, 0, 0)
-    #                 packet_source.send_message(msg.pack(mav), True)
-    #                 print("[CLI] Arm command sent")
-    #             elif cmd == 'guided':
-    #                 msg = mav.command_long_encode(1, 1, 176, 0, 1, 4, 0, 0, 0, 0, 0)
-    #                 packet_source.send_message(msg.pack(mav), True)
-    #                 print("[CLI] Guided command sent")
-    #             elif cmd == 'quit':
-    #                 transmitting = False
-    #                 Qt.QApplication.quit()
-    #                 return
-
-    #     listener = threading.Thread(target=input_listener, daemon=True)
-    #     listener.start()
+      
 
         ####################################
         # Clean Up Methods
@@ -280,10 +237,10 @@ class flow_graph(gr.top_block,Qt.QWidget):
         except Exception as e:
             print(f"Warning: could not zero gains: {e}", file=sys.stderr)
 
-        self.source.stop()
-        self.metrics_logger.close()
+        
         self.stop()
         self.wait()
+        self.source.stop()
         print("Flow graph stopped.")
     
     
@@ -295,6 +252,7 @@ if __name__ == '__main__':
 
     def sig_handler(sig=None, frame=None):
         print("\nCaught SIGINT, shutting down...")
+        
         tb._safe_shutdown()
         Qt.QApplication.quit()
 

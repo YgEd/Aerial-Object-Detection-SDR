@@ -28,17 +28,24 @@ class cvBlock(gr.sync_block):
         self._pack_q = queue.Queue()
         # Thread that reads the output from cv_proc and stores it in self._q
         self._reader_thread = None
+
+
+        # partial packet bookeeping if n_requested from gnu scheduler is less than the amount of bit messages
+        self.current_packet = None 
+        self.current_index = 0
         
     # define thread reading from subprocess
     # takes each line in byte format converts it to string and puts it in queue
     def _add_to_q(self, stream, msg_q, packet_q):
         # read lines until the b'' condition is found
         for line in iter(stream.readline, b''):
-            msg_q.put(line)
-            packet_q.put(self.pc.build_packet(line))
+            if line is not None:
+                built_packet = self.pc.build_packet(line)
+                if built_packet is not None:
+                    packet_q.put(built_packet)
+                    msg_q.put(line)
 
-
-    def _waitForProcStart(self, timeout:float = 10.0):
+    def _waitForProcStart(self, timeout:float = 20.0):
         deadline = time.monotonic() + timeout
         # string sender outputs when it is finished spinning up
         target_str = "Sender started"
@@ -46,7 +53,7 @@ class cvBlock(gr.sync_block):
             remaining = deadline - time.monotonic()
             try:
                 # .get() command blocks till remaining time
-                line = self._q.get(timeout=remaining)
+                line = self._q.get(timeout=remaining)   
                 line = line.decode().strip()
                 if target_str in line:
                     return True
@@ -58,7 +65,7 @@ class cvBlock(gr.sync_block):
 
     def start(self):
         print(f"[cvBlock] Starting CV script...\r",end="", flush=True)
-        if self.cv_proc is None and self._reader_thread is None:
+        if self.cv_proc is None:
 
             # start subprocess cv script
             self.cv_proc = subprocess.Popen(
@@ -80,7 +87,7 @@ class cvBlock(gr.sync_block):
             if started:
                 print(f"[cvBlcok] CV script started successfully!")
             else:
-                return False
+                self.stop()
         else:
             print(f"[cvBlock] Cannot start mutliple instances of CV script")
     
@@ -117,49 +124,37 @@ class cvBlock(gr.sync_block):
 
 
     def work(self, input_items, output_items):
-
-
-        # code for sending packet
-
-        # output_tiems stores list of np arrays for each output, because this block only has one output we just get the first output
         out = output_items[0]
-        # GNU Radio pre-allocates out with a specific length before calling work
-        # This is the amount of samples the scheduler is asking your block to produce this call
         n_requested = len(out)
 
-        # check message queue, if its empty return nothing
-        if self._pack_q.qsize() == 0:
-            return 0
-        
-        # if there are messages in the queue, send out as many as possible
-        n = min(n_requested, self._pack_q.qsize())
+        produced = 0
 
-        # get n amount of messages from queue and append to out
-        for _ in range(n):
-            try:
-                # put packet in queue
-                out.append(self._pack_q.get_nowait())
-            except queue.Empty:
-                break
-        
-        # fill remainig with zeros as there may be garbage in there
-        if n < n_requested:
-            out[n:] = 0
+        while produced < n_requested:
+            # load a new packet if needed
+            if self.current_packet is None or self.current_index >= len(self.current_packet):
+                try:
+                    # get readable packet to print
+                    read_msg = self._q.get_nowait()
+                    print(f"[cvBlockSource] sending msg: {read_msg}")
+                    self.current_packet = self._pack_q.get_nowait()
+                    self.current_index = 0
+                except queue.Empty:
+                    break
+
+            remaining_out = n_requested - produced
+            remaining_packet = len(self.current_packet) - self.current_index
+
+            to_write = min(remaining_out, remaining_packet)
+            out[produced:produced+to_write] = self.current_packet[self.current_index:self.current_index+to_write]
+            
+            produced += to_write
+            self.current_index += to_write
+
+            
+        # zero-fill remainder
+        if produced < n_requested:
+            out[produced:] = 0
+
+        return produced
 
 
-
-
-# if __name__ == '__main__':
-
-#     print("starting object detection...")
-#     cv = cvBlock()
-#     cv.start()
-
-#     while(True):
-#         cli_in = input("Press 'o' for output and 'q' to quit: ")
-#         if cli_in == 'o':
-#             cv.checkCV()
-#         if cli_in == 'q':
-#             cv.stop()
-#             sys.exit(0)
-#         time.sleep(2)

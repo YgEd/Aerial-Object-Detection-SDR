@@ -1,7 +1,6 @@
 from gnuradio import gr, blocks, digital, filter, analog, qtgui
 from gnuradio.filter import firdes
 import threading
-from pymavlink.dialects.v20 import common as mavlink2
 import osmosdr
 import sys
 import sip
@@ -244,8 +243,6 @@ class flow_graph(gr.top_block, Qt.QWidget):
         except Exception as e:
             print(f"Warning: could not zero gains: {e}", file=sys.stderr)
         
-        self.metrics_logger.close()
-
         self.stop()
         self.wait()
         print("Flow graph stopped.")
