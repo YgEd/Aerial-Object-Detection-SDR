@@ -13,8 +13,6 @@ DISPLAY_HISTORY = 10
 
 detections_history = []
 current = []
-
-# Label colors (BGR)
 label_colors = {
     "person": (0, 0, 255),
     "bottle": (255, 0, 0),
@@ -33,115 +31,78 @@ def signal_handler(sig, frame):
 
 signal.signal(signal.SIGINT, signal_handler)
 
-print("📡 Viewer started – reading detections from stdin... (press q or Ctrl+C to quit)")
+print("📡 Viewer started – reading from stdin...")
+print("💡 Tip: If you don't see anything, check if your input is actually arriving.")
 
 while running:
-    # --- Non-blocking stdin read ---
-    if select.select([sys.stdin], [], [], 0.05)[0]:
+    # 1. Non-blocking check for new data
+    # We use a very small timeout (0.01) so we don't freeze the UI
+    rlist, _, _ = select.select([sys.stdin], [], [], 0.01)
+    
+    if rlist:
         line = sys.stdin.readline()
-
         if not line:
-            break  # pipe closed
-
+            break
+        
         try:
-            payload = json.loads(line.strip())
+            # Clean and Extract JSON
+            clean_line = line.strip().strip("'")
+            if " " in clean_line:
+                _, json_str = clean_line.split(" ", 1)
+            else:
+                json_str = clean_line
 
-            # Accept formats:
-            # 1. {"detections": [...], "timestamp": ...}
-            # 2. [...]
-            # 3. {...}
+            payload = json.loads(json_str)
+            print(f"✅ Received: {len(payload.get('detections', []))} detections") # DEBUG PRINT
+
             if isinstance(payload, dict) and "detections" in payload:
                 data = payload["detections"]
                 ts = payload.get("timestamp", time.time())
-                for d in data:
-                    d["timestamp"] = ts
+                for d in data: d["timestamp"] = ts
             else:
-                data = payload
-                if isinstance(data, dict):
-                    data = [data]
-
+                data = payload if isinstance(payload, list) else [payload]
                 for d in data:
-                    if "timestamp" not in d:
-                        d["timestamp"] = time.time()
+                    if "timestamp" not in d: d["timestamp"] = time.time()
 
             current = data
             detections_history.extend(data)
-
-            # Trim history
             if len(detections_history) > HISTORY_SIZE:
                 detections_history = detections_history[-HISTORY_SIZE:]
 
-        except json.JSONDecodeError:
-            pass  # ignore bad lines
+        except Exception as e:
+            # Uncomment to debug parsing errors:
+            # print(f"❌ Error: {e}")
+            pass
 
-    history = detections_history[-DISPLAY_HISTORY:]
-
-    # === Object Map (640x480 scatter plot) ===
+    # 2. RENDER (Moved outside the 'if rlist' block so the window stays alive)
+    # Map Window
     map_img = np.zeros((480, 640, 3), dtype=np.uint8)
-
     for det in current:
-        if "center" not in det or not det["center"]:
-            continue
+        if "center" in det and det["center"]:
+            cx, cy = int(det["center"][0]), int(det["center"][1])
+            color = label_colors.get(det.get("label"), default_color)
+            cv2.circle(map_img, (cx, cy), 12, color, -1)
+            cv2.putText(map_img, det.get("label", "")[:6], (cx + 15, cy),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-        cx, cy = int(det["center"][0]), int(det["center"][1])
-        color = label_colors.get(det.get("label"), default_color)
-
-        cv2.circle(map_img, (cx, cy), 12, color, -1)
-        cv2.putText(map_img,
-                    det.get("label", "")[:6],
-                    (cx + 15, cy),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    color,
-                    2)
-
-    cv2.imshow("Object Map (2D scatter)", map_img)
-
-    # === Detections List Table ===
+    # List Window
     list_img = np.zeros((420, 700, 3), dtype=np.uint8)
-
-    cv2.putText(list_img,
-                "Live Detections (last 10)",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (255, 255, 255),
-                2)
-
+    cv2.putText(list_img, "Live Detections (last 10)", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+    
+    history = detections_history[-DISPLAY_HISTORY:]
     y = 70
-
     for det in history:
-        ts = det.get("timestamp", time.time())
-        ts_str = time.strftime("%H:%M:%S", time.localtime(ts))
-
-        text = (
-            f"{ts_str} | "
-            f"{det.get('label',''):12} "
-            f"conf:{det.get('confidence',0):.2f}  "
-            f"center:{det.get('center')}"
-        )
-
-        if det.get("aruco_pose"):
-            text += f"  pose:{det['aruco_pose']}"
-
-        cv2.putText(list_img,
-                    text,
-                    (10, y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.55,
-                    (200, 200, 200),
-                    1)
-
+        ts_str = time.strftime("%H:%M:%S", time.localtime(det.get("timestamp", time.time())))
+        text = f"{ts_str} | {det.get('label',''):12} conf:{det.get('confidence',0):.2f}"
+        cv2.putText(list_img, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
         y += 32
-        if y > 400:
-            break
 
+    cv2.imshow("Object Map", map_img)
     cv2.imshow("Detections List", list_img)
 
-    # --- UI key handling ---
+    # 3. UI EVENT LOOP (Crucial for showing the window)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Cleanup
 cv2.destroyAllWindows()
-print("✅ Viewer shut down cleanly")

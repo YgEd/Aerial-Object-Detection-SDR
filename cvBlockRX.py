@@ -123,7 +123,7 @@ class cvBlockRX(gr.sync_block):
                         # unwhiten message
                         msg = self._pc.whiten(raw_payload_bytes)
                         print(f'[cvBlockRX] received msg: {msg}')
-                        self.rx_proc.stdin(msg)
+                        self.rx_proc.stdin.write(msg)
                         self.bit_buffer = []
                         self.constructed_bits = []
                         self.state = 'SEARCHING'
